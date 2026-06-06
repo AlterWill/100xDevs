@@ -59,18 +59,26 @@ function App() {
             className="border border-white rounded p-3 h-5 w-7/12"
           ></input>
           <div className="flex flex-row gap-2">
-            <div>About us </div>
-            <div>contact</div>
-            <div>Signup</div>
-            <div>Signin</div>
+            <div className="text-center border border-white h-6 w-22 rounded px-1">
+              About us
+            </div>
+            <div className="text-center border border-white h-6 w-22 rounded px-1">
+              contact
+            </div>
+            <div className="text-center border border-white h-6 w-22 rounded px-1">
+              Signup
+            </div>
+            <div className="text-center border border-white h-6 w-22 rounded px-1">
+              Signin
+            </div>
           </div>
         </div>
         {/* content */}
-        <div className="border border-white m-3 flex flex-row">
-          <div className="m-3 border border-white h-screen max-w-40 w-4/12">
+        <div className="m-3 flex flex-row">
+          <div className="m-3 h-screen max-w-40 w-4/12">
             Total number of items:{totalNoOfItem()}
           </div>
-          <div className="border border-white flex-1 flex flex-row">
+          <div className="border-x-2 border-white flex-1 flex flex-row">
             {order.map((item) => {
               return (
                 <div className="border border-white flex flex-col justify-between wrap gap h-52 m-3 rounded">
@@ -92,10 +100,10 @@ function App() {
               );
             })}
           </div>
-          <div className="border border-white p-3 max-w-90 w-4/12">
+          <div className="p-3 max-w-90 w-4/12">
             <div className="border-b-2 border-white flex flex-row justify-between">
               <div>Cart</div>
-              <div>Added Item:{Object.keys(order).length}</div>
+              <div>Added Item:{Object.keys(cart).length}</div>
             </div>
             <div>Item List</div>
             <div className="ml-2">
