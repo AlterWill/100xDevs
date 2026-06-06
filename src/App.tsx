@@ -46,9 +46,15 @@ function App() {
           <div className="m-3 border border-white h-screen max-w-40 w-4/12">
             Total number of items:{itemNo}
           </div>
-          <div className="border border-white flex-1">
+          <div className="border border-white flex-1 flex flex-row">
             {order.map((item) => {
-              return <div></div>;
+              return (
+                <div className="border border-white wrap gap h-52 m-3 rounded">
+                  <img src={item.imageUrl} height={150} width={150}></img>
+                  <div>item:{item.item}</div>
+                  <div>Price:{item.price}</div>
+                </div>
+              );
             })}
           </div>
           <div className="border border-white p-3 max-w-90 w-4/12">
