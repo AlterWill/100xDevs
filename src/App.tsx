@@ -4,25 +4,27 @@ type orderType = {
   item: string;
   price: number;
   imageUrl: string;
-  count: number;
 };
 
 function App() {
-  const [itemNo, setItemNo] = useState<number>(0);
+  const [cart, setCart] = useState<orderType[]>([]);
   const [order, setOrder] = useState<orderType[]>([
     {
       item: "Mango",
       price: 30,
       imageUrl:
         "https://imgs.search.brave.com/VdDlQbU6-Pd1YK4D10Gs9ghJFeXJBggvSnmRv4c3Z40/rs:fit:500:0:1:0/g:ce/aHR0cHM6Ly9tZWRp/YS5pc3RvY2twaG90/by5jb20vaWQvMTM1/NDgzMzUzOC9waG90/by9tYW5nby10cm9w/aWNhbC1mcnVpdC1v/bi10YWJsZS13aXRo/LWdyZWVuLW5hdHVy/ZS1iYWNrZ3JvdW5k/LmpwZz9zPTYxMng2/MTImdz0wJms9MjAm/Yz1fZ3hwWkxaeXFW/NFVlNnhRYUdrQjJz/YjhwcG9ReDNwXy1w/aDBONlZKeHRZPQ",
-      count: 1,
     },
-    { item: "Apple", price: 40, imageUrl: "", count: 4 },
-    { item: "Water", price: 50, imageUrl: "", count: 5 },
+    { item: "Apple", price: 40, imageUrl: "" },
+    { item: "Water", price: 50, imageUrl: "" },
   ]);
 
+  function totalNoOfItem(): number {
+    return Object.values(order).reduce((acc, val) => acc + 1, 0);
+  }
+
   function totalPrice(): number {
-    return Object.values(order).reduce((acc, val) => acc + val.price, 0);
+    return Object.values(cart).reduce((acc, val) => acc + val.price, 0);
   }
   return (
     <div className="bg-black text-white h-screen w-screen flex flex-col ">
@@ -44,15 +46,26 @@ function App() {
         {/* content */}
         <div className="border border-white m-3 flex flex-row">
           <div className="m-3 border border-white h-screen max-w-40 w-4/12">
-            Total number of items:{itemNo}
+            Total number of items:{totalNoOfItem()}
           </div>
           <div className="border border-white flex-1 flex flex-row">
             {order.map((item) => {
               return (
-                <div className="border border-white wrap gap h-52 m-3 rounded">
-                  <img src={item.imageUrl} height={150} width={150}></img>
+                <div className="border border-white flex flex-col justify-between wrap gap h-52 m-3 rounded">
+                  <img className="w-36 h-30" src={item.imageUrl}></img>
                   <div>item:{item.item}</div>
                   <div>Price:{item.price}</div>
+                  <button
+                    className="bg-white text-black border border-cyan-400 w-36 rounded-b-l h-5"
+                    onClick={() => {
+                      setCart((current) => [...current, item]);
+                      setOrder((current) =>
+                        current.filter((obj) => obj !== item),
+                      );
+                    }}
+                  >
+                    +
+                  </button>
                 </div>
               );
             })}
@@ -64,7 +77,7 @@ function App() {
             </div>
             <div>Item List</div>
             <div className="ml-2">
-              {order.map((item) => {
+              {cart.map((item) => {
                 return (
                   <div>
                     {item.item}:{item.price}
