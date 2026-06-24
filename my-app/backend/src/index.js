@@ -20,7 +20,7 @@ const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const SANDBOX_ROOT = path.resolve(__dirname, '../../sandbox');
+const SANDBOX_ROOT = path.resolve(__dirname, '../../../sandbox/');
 
 function sandboxPath(relativePath = '') {
   const fullPath = path.resolve(SANDBOX_ROOT, relativePath);
@@ -214,12 +214,14 @@ const installPackageTool = {
   }
 };
 
+/*
 const scaffoldViteProjectTool = {
   type: "function",
   name: "scaffold_vite_project",
   description: "Scaffolds a fresh React + Vite project directly in the root sandbox folder automatically.",
   parameters: { type: "OBJECT", properties: {} }
 };
+*/
 
 const startDevServerTool = {
   type: "function",
@@ -254,43 +256,42 @@ function execFunctions(toolName, args) {
       );
     case "read_directory":
       return ReadDirectoryFunction(args.folderPath);
-    case "scaffold_vite_project":
-      try {
-        const ouptut = execSync('npm create vite@latest . -- --template react', {
-          cwd: SANDBOX_ROOT,
-          encoding: 'utf-8',
-          timeout: 30000
-        })
-        return `Vite React project scaffolded successfully in root folder.`
-      } catch (err) {
-        return `Scaffolding failed: ${err.message}`
-      }
     case "start_development_server":
-      exec('npm run dev -- --port 5170 --host', { cwd: SANDBOX_ROOT })
-      return "Development server is booting up asynchronously in the background on port 5170"
+      try {
+        execSync('npx --yes kill-port 5170', { stdio: 'ignore' })
+      } catch (e) {
+        // ignore
+      }
+
+      exec('npx --yes serve . -l 5170', {
+        cwd: SANDBOX_ROOT,
+        detached: true,
+        stdio: 'ignore'
+      })
+      return "Static server running on port 5170"
     default:
       return "not a tool call" + toolName
   }
 }
 
 const geminiTools = [readDirectoryTool, readFileTool, writeFileTool, createFolderTool, deleteFileTool, runBashTool,
-  initNodeProject, installPackageTool, scaffoldViteProjectTool, startDevServerTool]
+  initNodeProject, installPackageTool, startDevServerTool]
 
 const systemInstruction = `
-You are an expert full-stack developer operating inside a sandbox workspace environment.
-Your absolute goal is to build a beautiful modern web application based on the user's request.
-
-CRITICAL PIPELINE PROCEDURES:
-1. Always set up a clean blueprint base first. If building a new UI or app from scratch, call the 'scaffold_vite_project' tool immediately.
-2. For adding dependencies, use the 'install_package' tool.
-3. For creating, writing, or changing file components (like src/App.jsx or vite.config.js), ALWAYS prefer the specific 'write_file' tool over writing raw bash echo/cat commands.
-4. Ensure your server layout maps to port 5170.
-5. Once your files are cleanly generated, invoke 'start_development_server' to boot up the non-blocking background frame.
+You are an expert web developer. Your goal is to build simple, beautiful websites using ONLY plain HTML, CSS, and JavaScript. 
+CRITICAL RULES:
+1. DO NOT use React, Vite, or any build tools/frameworks.
+2. Build the website by creating an 'index.html', 'style.css', and 'script.js' file in the sandbox root.
+3. Serve the website using the 'start_development_server' tool.
+4. Ensure your server maps to port 5170.
+5. You are responsible for writing valid, clean HTML5, CSS3, and modern Vanilla JS.
 `;
 
 app.post('/', async (req, res) => {
   const prompt = req.body.prompt
+  console.log(prompt)
   const GeminiModel = 'gemini-3.1-flash-lite'
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -325,6 +326,7 @@ app.post('/', async (req, res) => {
             interaction = await client.interactions.create({
               model: GeminiModel,
               previous_interaction_id: interaction.id,
+              tools: geminiTools,
               input: {
                 type: 'function_result',
                 name: step.name,
