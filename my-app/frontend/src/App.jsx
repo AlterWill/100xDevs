@@ -11,20 +11,21 @@ function App() {
   }
 
   const sendData = async (e) => {
+    setMessages(e => [...e, `user: ${inputValue}`])
+    setInputValue("")
     try {
       const response = await axios.post('http://localhost:3000/', {
         prompt: inputValue
       })
-      setMessages(e => [...e, `user: ${inputValue}\n`, `AI: ${response.data["message"]}`])
+      setMessages(e => [...e, `AI: ${response.data["message"]}`])
     } catch (error) {
-      setMessages(e => [...e, `user: ${inputValue}`, `AI: ${JSON.stringify(error)}`])
+      setMessages(e => [...e, `AI: ${JSON.stringify(error)}`])
     }
-    setInputValue("")
   }
 
   return (
     <div className="flex bg-black h-screen">
-      <div className="text-white border flex-3">
+      <div className="text-white border flex-3 text-wrap scroll-auto">
         <div>{
           messages.map((msg, index) => (
             <div key={index} className="whitespace-pre-wrap border-b border-gray-700 pb-1">

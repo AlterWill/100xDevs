@@ -6,9 +6,8 @@ import { GoogleGenAI } from '@google/genai';
 import * as fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
+import { exec, execSync } from 'child_process';
 import dotenv from 'dotenv'
-
 
 app.use(express.json())
 app.use(cors())
@@ -44,8 +43,12 @@ async function askGemini(prompt) {
 
 function ReadDirectoryFunction(filePath) {
   const fullPath = sandboxPath(filePath)
-  const files = fs.readdirSync(fullPath)
-  return files
+  try {
+    const files = fs.readdirSync(fullPath)
+    return files
+  } catch (error) {
+    return error
+  }
 }
 
 const readDirectoryTool = {
@@ -109,12 +112,24 @@ const writeFileTool = {
 
 function bashCommandCallTool(bashCommand, folderPath = '') {
   const fullPath = sandboxPath(folderPath)
-  try {
-    const output = execSync(bashCommand, { cwd: fullPath, encoding: 'utf-8' });
-    return output
-  } catch (error) {
-    return `Command failed:${error.message}`
+  const cleanedCommand = bashCommand.trim();
+
+  if (cleanedCommand.includes('npm run dev') || cleanedCommand.includes('pnpm dev')) {
+    exec(cleanedCommand, { cwd: fullPath })
+    return "Development server startup sequence initialized on background port."
   }
+
+  try {
+    const output = execSync(cleanedCommand, {
+      cwd: fullPath,
+      encoding: 'utf-8',
+      timeout: 30000
+    })
+    return output || "command executed successfully with no output"
+  } catch (err) {
+    return `Command failed: ${err.message}. Stderr: ${err.stderr || ''}`
+  }
+
 }
 
 const createFolderTool = {
@@ -125,7 +140,8 @@ const createFolderTool = {
     type: "OBJECT",
     properties: {
       folderPath: {
-        type: "STRING"
+        type: "STRING",
+        description: "folderPath and name of the folder to be created"
       }
     },
     required: ["folderPath"]
@@ -175,8 +191,11 @@ const initNodeProject = {
   parameters: {
     type: "OBJECT",
     properties: {
+      folderPath: {
+        type: "STRING"
+      }
     },
-    required: []
+    required: ["folderPath"]
   }
 };
 
@@ -195,12 +214,26 @@ const installPackageTool = {
   }
 };
 
+const scaffoldViteProjectTool = {
+  type: "function",
+  name: "scaffold_vite_project",
+  description: "Scaffolds a fresh React + Vite project directly in the root sandbox folder automatically.",
+  parameters: { type: "OBJECT", properties: {} }
+};
+
+const startDevServerTool = {
+  type: "function",
+  name: "start_development_server",
+  description: "Starts the Vite development server on port 5170 in the background.",
+  parameters: { type: "OBJECT", properties: {} }
+};
+
 function execFunctions(toolName, args) {
   switch (toolName) {
     case "install_package":
       return bashCommandCallTool(`pnpm i ${args.packageName}`, '')
     case "init_node_project":
-      return bashCommandCallTool('npm init -y', '')
+      return bashCommandCallTool(`cd ${args.folderPath} && npm init -y`, '')
     case "run_bash":
       return bashCommandCallTool(args.command, args.cwd || '')
     case "delete_file":
@@ -221,44 +254,101 @@ function execFunctions(toolName, args) {
       );
     case "read_directory":
       return ReadDirectoryFunction(args.folderPath);
+    case "scaffold_vite_project":
+      try {
+        const ouptut = execSync('npm create vite@latest . -- --template react', {
+          cwd: SANDBOX_ROOT,
+          encoding: 'utf-8',
+          timeout: 30000
+        })
+        return `Vite React project scaffolded successfully in root folder.`
+      } catch (err) {
+        return `Scaffolding failed: ${err.message}`
+      }
+    case "start_development_server":
+      exec('npm run dev -- --port 5170 --host', { cwd: SANDBOX_ROOT })
+      return "Development server is booting up asynchronously in the background on port 5170"
     default:
-      return "no a tool call" + toolName
+      return "not a tool call" + toolName
   }
 }
 
+const geminiTools = [readDirectoryTool, readFileTool, writeFileTool, createFolderTool, deleteFileTool, runBashTool,
+  initNodeProject, installPackageTool, scaffoldViteProjectTool, startDevServerTool]
+
+const systemInstruction = `
+You are an expert full-stack developer operating inside a sandbox workspace environment.
+Your absolute goal is to build a beautiful modern web application based on the user's request.
+
+CRITICAL PIPELINE PROCEDURES:
+1. Always set up a clean blueprint base first. If building a new UI or app from scratch, call the 'scaffold_vite_project' tool immediately.
+2. For adding dependencies, use the 'install_package' tool.
+3. For creating, writing, or changing file components (like src/App.jsx or vite.config.js), ALWAYS prefer the specific 'write_file' tool over writing raw bash echo/cat commands.
+4. Ensure your server layout maps to port 5170.
+5. Once your files are cleanly generated, invoke 'start_development_server' to boot up the non-blocking background frame.
+`;
+
 app.post('/', async (req, res) => {
   const prompt = req.body.prompt
+  const GeminiModel = 'gemini-3.1-flash-lite'
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
 
-  //gemini prompt for tasks
-  const interaction = await client.interactions.create({
-    model: 'gemini-2.5-flash',
-    input: prompt,
-    tools: [readDirectoryTool, readFileTool, writeFileTool, createFolderTool, deleteFileTool, runBashTool, initNodeProject, installPackageTool],
-    generation_config: { tool_choice: 'any' }
-  });
+  try {
+    let interaction = await client.interactions.create({
+      model: GeminiModel,
+      input: `${systemInstruction}\n\n${prompt}`,
+      tools: geminiTools,
+      generation_config: { tool_choice: 'auto' }
+    });
 
-  console.log(prompt)
+    let keepLooping = true;
+    let iteration = 0;
+    const maxIteration = 10;
 
-  for (const step of interaction.steps) {
-    if (step.type === 'function_call') {
-      console.log(`Function to call: ${step.name}`);
-      console.log(`Arguments: ${JSON.stringify(step.arguments)}`);
+    while (keepLooping && iteration < maxIteration) {
+      iteration++;
+      let toolCall = false
+
+      if (interaction && interaction.steps) {
+        for (const step of interaction.steps) {
+          console.log(step)
+          res.write(`data: ${JSON.stringify({ type: 'step', step })}\n\n`);
+          if (step.type === 'function_call') {
+            toolCall = true;
+            let result = execFunctions(step.name, step.arguments)
+
+            const functionResult = typeof result === 'object' ? JSON.stringify(result) : String(result)
+            res.write(`data: ${JSON.stringify({ type: 'tool_output', name: step.name, result: functionResult })}\n\n`);
+
+            interaction = await client.interactions.create({
+              model: GeminiModel,
+              previous_interaction_id: interaction.id,
+              input: {
+                type: 'function_result',
+                name: step.name,
+                call_id: step.id,
+                result: functionResult
+              }
+            });
+            break;
+          }
+        }
+      }
+
+      if (!toolCall) {
+        keepLooping = false
+      }
+
     }
-    console.log('step:', step)
+    res.write(`data: ${JSON.stringify({ type: 'final', text: interaction.output_text || "Done!" })}\n\n`);
+    res.end();
+  } catch (error) {
+    console.log(error)
+    res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+    res.end();
   }
-
-  // loop 
-  // check if tasks are complete
-
-  // end when complete else continue and tell it that the website should be hosted at 
-  //http://localhost:5170/
-
-  //return message for user 
-
-
-  res.status(200).json({
-    message: 'Hello World!',
-  });
 });
 
 
